@@ -5,7 +5,7 @@ model: PreTrainedModel
 tokenizer: PreTrainedTokenizer
 
 model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name="qwen-fim-final",
+    model_name="qwen-code-fim-final",
     load_in_4bit=True,
     device_map="auto"
 )

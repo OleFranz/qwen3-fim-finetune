@@ -144,14 +144,14 @@ trainer = UnslothTrainer(
         weight_decay=0.01,
         lr_scheduler_type="linear",
         seed=42,
-        output_dir="qwen-fim-code",
+        output_dir="qwen-code-fim-checkpoint",
         report_to="none"
     )
 )
 
 trainer.train()
 
-model.save_pretrained("qwen-fim-final")
-tokenizer.save_pretrained("qwen-fim-final")
+model.save_pretrained("qwen-code-fim-final")
+tokenizer.save_pretrained("qwen-code-fim-final")
 
-print("Training completed. Model saved to 'qwen-fim-final'")
+print("Training completed. Model saved to 'qwen-code-fim-final'")
