@@ -14,3 +14,9 @@ Dataset used for training:
 The model is trained on the Qwen2.5-Coder FIM template:
 \
 `<|fim_prefix|>{prefix}<|fim_suffix|>{suffix}<|fim_middle|>{middle}<|endoftext|>`
+
+**INFO**
+\
+You might need to run the scripts with UTF-8 mode enabled to avoid encoding issues on Windows:
+\
+`python -X utf8 {...}.py`
