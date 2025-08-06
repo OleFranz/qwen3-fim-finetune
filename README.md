@@ -6,6 +6,15 @@ Made for Windows and Python 3.12.
 Requires about 20GB of disk space and 4GB of VRAM.
 
 
+**Chat FIM:** (*Doesnt work, either bugged train code or too little train data*)
+\
+Model used for fine-tuning:
+[unsloth/Qwen3-0.6B-Base](https://huggingface.co/unsloth/Qwen3-0.6B-Base)
+\
+Dataset used for training:
+[agentlans/high-quality-english-sentences](https://huggingface.co/datasets/agentlans/high-quality-english-sentences)
+
+
 **Code FIM:**
 \
 Model used for fine-tuning:
@@ -13,15 +22,6 @@ Model used for fine-tuning:
 \
 Dataset used for training:
 [Orion-zhen/fim-code](https://huggingface.co/datasets/Orion-zhen/fim-code)
-
-
-**Chat FIM:** (*Doesnt work, either bugged train code or too little train data*)
-\
-Model used for fine-tuning:
-[unsloth/Qwen3-0.6B-Base](https://huggingface.co/unsloth/Qwen3-0.6B-Base)
-\
-Dataset used for training:
-[HanxiGuo/BiScope_Data](https://huggingface.co/datasets/HanxiGuo/BiScope_Data)
 
 
 The models are trained on the Qwen2.5-Coder FIM template:
