@@ -114,6 +114,18 @@ def format_fim_prompt(example):
     suffix_text = full_text[middle_end:]
     middle_text = full_text[middle_start:middle_end]
 
+    # 50/50 chance to further break up the middle word
+    if random.randint(0, 1) == 0 and len(middle_text) > 1:
+        # decide how many characters to move to prefix (at least 0)
+        chars_to_move_prefix = random.randint(0, len(middle_text) - 1)
+        # from remaining characters, decide how many to move to suffix (can be 0)
+        remaining_chars = len(middle_text) - chars_to_move_prefix
+        chars_to_move_suffix = random.randint(0, remaining_chars - 1) if remaining_chars > 1 else 0
+        # move characters
+        prefix_text += middle_text[:chars_to_move_prefix]
+        suffix_text = middle_text[len(middle_text) - chars_to_move_suffix:] + suffix_text
+        middle_text = middle_text[chars_to_move_prefix:len(middle_text) - chars_to_move_suffix]
+
     middle_token_count = len(tokenizer.encode(middle_text))
 
     # calculate available tokens for prefix and suffix
@@ -218,6 +230,7 @@ trainer = UnslothTrainer(
         embedding_learning_rate=0.0001,
         fp16=not torch.cuda.is_bf16_supported(),
         bf16=torch.cuda.is_bf16_supported(),
+        torch_empty_cache_steps=10,
         logging_steps=10,
         save_steps=500,
         optim="adamw_8bit",

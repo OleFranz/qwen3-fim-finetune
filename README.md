@@ -6,7 +6,7 @@ Made for Windows and Python 3.12.
 Requires about 20GB of disk space and 4GB of VRAM.
 
 
-**Chat FIM:** (*Only whole word completions*)
+**Chat FIM:**
 \
 Model used for fine-tuning:
 [unsloth/Qwen3-0.6B-Base](https://huggingface.co/unsloth/Qwen3-0.6B-Base)
