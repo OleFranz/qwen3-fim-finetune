@@ -10,8 +10,8 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     device_map="auto"
 )
 
-prefix = "does that "
-suffix = "code work: for i in range(10): print(i)"
+prefix = "do you "
+suffix = " the current time?"
 prompt = f"<|fim_prefix|>{prefix}<|fim_suffix|>{suffix}<|fim_middle|>"
 
 inputs = tokenizer([prompt], return_tensors="pt").to(model.device)

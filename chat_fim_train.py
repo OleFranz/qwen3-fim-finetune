@@ -1,6 +1,6 @@
 import torch
-from unsloth import FastQwen3Model, UnslothTrainer
-from transformers import TrainingArguments, PreTrainedModel, PreTrainedTokenizer
+from unsloth import FastQwen3Model, UnslothTrainer, UnslothTrainingArguments, add_new_tokens
+from transformers import PreTrainedModel, PreTrainedTokenizer
 from datasets import load_dataset
 
 import random
@@ -17,18 +17,44 @@ tokenizer: PreTrainedTokenizer
 
 model, tokenizer = FastQwen3Model.from_pretrained(
     model_name="unsloth/Qwen3-0.6B-Base",
-    max_seq_length=1024,
+    max_seq_length=256,
     dtype=None,
     load_in_4bit=False
 )
 
+# register FIM tokens if not already in the tokenizer
+required_special_tokens = ["<|fim_prefix|>", "<|fim_suffix|>", "<|fim_middle|>", "<|endoftext|>"]
+existing_special_tokens = tokenizer.special_tokens_map_extended.get("additional_special_tokens", [])
+new_special_tokens = [token for token in required_special_tokens if token not in existing_special_tokens]
+tokenizer.add_special_tokens({
+    "additional_special_tokens": existing_special_tokens + new_special_tokens
+})
+model.resize_token_embeddings(len(tokenizer))
+add_new_tokens(
+    model,
+    tokenizer,
+    new_tokens=new_special_tokens,
+)
+model.get_input_embeddings().weight.requires_grad = True
+
 model = FastQwen3Model.get_peft_model(
     model,
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+        "embed_tokens",
+        "lm_head"
+    ],
     random_state=42
 )
 
 # custom randint function with exponential distribution towards the lower end
-def sample_discrete_exp(a: int, b: int, lambd: float = 0.05) -> int:
+def sample_discrete_exp(a: int, b: int, lambd: float = 0.0) -> int:
     """
     Sample an integer from a discrete exponential distribution over the range [a, b].
 
@@ -43,7 +69,7 @@ def sample_discrete_exp(a: int, b: int, lambd: float = 0.05) -> int:
     b : int
         The upper bound of the range (inclusive).
     lambd : float, optional
-        The rate parameter of the exponential distribution (default is 0.05).
+        The rate parameter of the exponential distribution (default is 0.0).
         - Higher values of `lambd` result in a steeper decline in probability,
           thus more strongly favoring values near `a`.
         - Lower values of `lambd` make the distribution more uniform,
@@ -62,67 +88,96 @@ def sample_discrete_exp(a: int, b: int, lambd: float = 0.05) -> int:
 def format_fim_prompt(example):
     full_text = example["text"]
 
-    if full_text == None:
+    # pre "filter" text
+    if full_text is None: return None
+    full_text = str(full_text).strip()
+    if len(full_text) < 32: return None
+
+    word_boundaries = []
+    in_word = False
+    for i, ch in enumerate(full_text):
+        if not ch.isspace() and not in_word:
+            # word start
+            start = i
+            in_word = True
+        elif ch.isspace() and in_word:
+            # word end
+            word_boundaries.append((start, i))
+            in_word = False
+    # if text ends with a word, close it
+    if in_word:
+        word_boundaries.append((start, len(full_text)))
+
+    # no words → abort
+    if not word_boundaries:
         return None
 
-    # tokenize the full text to work with tokens
-    full_tokens = tokenizer.encode(full_text, add_special_tokens=False)
+    # choose a word: 50/50 random vs last
+    if random.randint(0, 1) == 0:
+        idx = random.randint(0, len(word_boundaries) - 1)
+    else:
+        idx = len(word_boundaries) - 1
 
-    if len(full_tokens) < 10:
-        return None
+    middle_start, middle_end = word_boundaries[idx]
 
-    # choose middle length (1 to 128 tokens)
-    middle_length = sample_discrete_exp(1, min(32, len(full_tokens) // 3))
+    # include leading space/newline with 50/50 chance (otherwise it stays in prefix)
+    if middle_start > 0 and full_text[middle_start - 1].isspace():
+        if random.randint(0, 1) == 0:
+            middle_start -= 1
+
+    prefix_text = full_text[:middle_start]
+    suffix_text = full_text[middle_end:]
+    middle_text = full_text[middle_start:middle_end]
+
+    middle_token_count = len(tokenizer.encode(middle_text))
 
     # calculate available tokens for prefix and suffix
-    # 1024 total - 4 special tokens - middle_length = remaining tokens
-    remaining_tokens = 1024 - 4 - middle_length
+    # 256 total - 4 special tokens - middle_length = remaining tokens
+    remaining_tokens = 256 - 4 - middle_token_count
 
-    # divide remaining tokens between prefix and suffix
-    prefix_length = remaining_tokens // 2
-    suffix_length = remaining_tokens - prefix_length
+    # split remaining tokens 50/50
+    pref_budget = sample_discrete_exp(0, remaining_tokens // 2, 0.01) # slight bias towards smaller numbers
+    suff_budget = sample_discrete_exp(0, remaining_tokens // 2, 0.01) # slight bias towards smaller numbers
 
-    # choose a random position for the middle part within the full text
-    latest_middle_start = len(full_tokens) - middle_length
+    # encode original prefix/suffix
+    prefix_tokens = tokenizer.encode(prefix_text, add_special_tokens=False)
+    suffix_tokens = tokenizer.encode(suffix_text, add_special_tokens=False)
 
-    if latest_middle_start < 0:
-        return None
+    # slice to budgets
+    new_prefix_tokens = prefix_tokens[-pref_budget:] if pref_budget > 0 else []
+    new_suffix_tokens = suffix_tokens[:suff_budget] if suff_budget > 0 else []
 
-    middle_start = random.randint(0, latest_middle_start)
-    middle_end = middle_start + middle_length
-
-    # extract new prefix, middle, and suffix tokens from the full text
-    all_prefix_tokens = full_tokens[:middle_start]
-    new_middle_tokens = full_tokens[middle_start:middle_end]
-    all_suffix_tokens = full_tokens[middle_end:]
-
-    # trim prefix and suffix to fit the token budget
-    if len(all_prefix_tokens) > prefix_length:
-        # take the last prefix_length tokens to maintain context
-        new_prefix_tokens = all_prefix_tokens[-prefix_length:]
-    else:
-        new_prefix_tokens = all_prefix_tokens
-
-    if len(all_suffix_tokens) > suffix_length:
-        # take the first suffix_length tokens to maintain context
-        new_suffix_tokens = all_suffix_tokens[:suffix_length]
-    else:
-        new_suffix_tokens = all_suffix_tokens
-
-    # convert the new tokens back to text
+    # decode slices
     new_prefix_text = tokenizer.decode(new_prefix_tokens, skip_special_tokens=True)
-    new_middle_text = tokenizer.decode(new_middle_tokens, skip_special_tokens=True)
     new_suffix_text = tokenizer.decode(new_suffix_tokens, skip_special_tokens=True)
+
+    # trim broken leading word in new_prefix_text
+    # if it doesn't start on whitespace, cut up to the first space
+    if new_prefix_text and not new_prefix_text[0].isspace():
+        first_space = new_prefix_text.find(" ")
+        if first_space != -1:
+            new_prefix_text = new_prefix_text[first_space:]
+    # then drop any residual leading whitespace
+    new_prefix_text = new_prefix_text.lstrip()
+
+    # trim broken trailing word in new_suffix_text
+    # if it doesn't end on whitespace, cut from the last space
+    if new_suffix_text and not new_suffix_text[-1].isspace():
+        last_space = new_suffix_text.rfind(" ")
+        if last_space != -1:
+            new_suffix_text = new_suffix_text[:last_space]
+    # then drop any residual trailing whitespace
+    new_suffix_text = new_suffix_text.rstrip()
 
     # create the FIM format prompt using the new extracted parts
     # Qwen2.5 Coder format: <|fim_prefix|>{prefix}<|fim_suffix|>{suffix}<|fim_middle|>{middle}<|endoftext|>
-    fim_prompt = f"<|fim_prefix|>{new_prefix_text}<|fim_suffix|>{new_suffix_text}<|fim_middle|>{new_middle_text}<|endoftext|>"
+    fim_prompt = f"<|fim_prefix|>{new_prefix_text}<|fim_suffix|>{new_suffix_text}<|fim_middle|>{middle_text}<|endoftext|>"
 
     # tokenize the FIM prompt
     encoded = tokenizer(
         fim_prompt,
         truncation=True,
-        max_length=1024,
+        max_length=256,
         padding=False,
         return_tensors=None
     )
@@ -154,7 +209,7 @@ def format_fim_prompt(example):
         "labels": labels,
     }
 
-dataset = load_dataset("HanxiGuo/BiScope_Data", split="train")
+dataset = load_dataset("agentlans/high-quality-english-sentences", split="train")
 dataset = dataset.shuffle(seed=42)
 dataset = dataset.map(
     format_fim_prompt,
@@ -166,22 +221,25 @@ trainer = UnslothTrainer(
     model=model,
     tokenizer=tokenizer,
     train_dataset=dataset,
-    max_seq_length=1024,
-    args=TrainingArguments(
-        per_device_train_batch_size=16,
-        gradient_accumulation_steps=4,
-        warmup_steps=10,
-        max_steps=50,
-        learning_rate=0.001,
+    dataset_text_field="text",
+    max_seq_length=256,
+    args=UnslothTrainingArguments(
+        dataset_num_proc=1,
+        per_device_train_batch_size=32,
+        gradient_accumulation_steps=8,
+        warmup_ratio=0.1,
+        max_steps=1000,
+        learning_rate=0.0002,
+        embedding_learning_rate=0.0001,
         fp16=not torch.cuda.is_bf16_supported(),
         bf16=torch.cuda.is_bf16_supported(),
         logging_steps=10,
-        save_steps=100,
+        save_steps=500,
         optim="adamw_8bit",
         weight_decay=0.01,
         lr_scheduler_type="linear",
         seed=42,
-        output_dir="qwen-code-fim-checkpoint",
+        output_dir="qwen-chat-fim-checkpoint",
         report_to="none"
     )
 )
