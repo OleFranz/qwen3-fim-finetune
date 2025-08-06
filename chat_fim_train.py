@@ -22,21 +22,6 @@ model, tokenizer = FastQwen3Model.from_pretrained(
     load_in_4bit=False
 )
 
-# register FIM tokens if not already in the tokenizer
-required_special_tokens = ["<|fim_prefix|>", "<|fim_suffix|>", "<|fim_middle|>", "<|endoftext|>"]
-existing_special_tokens = tokenizer.special_tokens_map_extended.get("additional_special_tokens", [])
-new_special_tokens = [token for token in required_special_tokens if token not in existing_special_tokens]
-tokenizer.add_special_tokens({
-    "additional_special_tokens": existing_special_tokens + new_special_tokens
-})
-model.resize_token_embeddings(len(tokenizer))
-add_new_tokens(
-    model,
-    tokenizer,
-    new_tokens=new_special_tokens,
-)
-model.get_input_embeddings().weight.requires_grad = True
-
 model = FastQwen3Model.get_peft_model(
     model,
     target_modules=[
