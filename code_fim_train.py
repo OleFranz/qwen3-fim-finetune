@@ -114,7 +114,7 @@ def format_fim_prompt(example):
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        "labels": labels,
+        "labels": labels
     }
 
 dataset = load_dataset("Orion-zhen/fim-code", split="train")
