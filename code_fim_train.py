@@ -21,6 +21,17 @@ model, tokenizer = FastQwen3Model.from_pretrained(
 
 model = FastQwen3Model.get_peft_model(
     model,
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+        "embed_tokens",
+        "lm_head"
+    ],
     random_state=42
 )
 
@@ -131,10 +142,10 @@ trainer = UnslothTrainer(
     train_dataset=dataset,
     max_seq_length=1024,
     args=TrainingArguments(
-        per_device_train_batch_size=16,
-        gradient_accumulation_steps=4,
-        warmup_steps=300,
-        max_steps=1500,
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=16,
+        warmup_steps=100,
+        max_steps=500,
         learning_rate=0.0002,
         fp16=not torch.cuda.is_bf16_supported(),
         bf16=torch.cuda.is_bf16_supported(),
