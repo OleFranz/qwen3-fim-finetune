@@ -1,5 +1,5 @@
 import torch
-from unsloth import FastQwen3Model, UnslothTrainer, UnslothTrainingArguments, add_new_tokens
+from unsloth import FastQwen3Model, UnslothTrainer, UnslothTrainingArguments
 from transformers import PreTrainedModel, PreTrainedTokenizer
 from datasets import load_dataset
 
@@ -188,8 +188,7 @@ def format_fim_prompt(example):
 dataset = load_dataset("agentlans/high-quality-english-sentences", split="train")
 dataset = dataset.shuffle(seed=42)
 dataset = dataset.map(
-    format_fim_prompt,
-    remove_columns=["text"]
+    format_fim_prompt
 )
 dataset = dataset.filter(lambda x: x is not None)
 
@@ -197,14 +196,13 @@ trainer = UnslothTrainer(
     model=model,
     tokenizer=tokenizer,
     train_dataset=dataset,
-    dataset_text_field="text",
     max_seq_length=256,
     args=UnslothTrainingArguments(
         dataset_num_proc=1,
         per_device_train_batch_size=32,
         gradient_accumulation_steps=8,
         warmup_ratio=0.1,
-        max_steps=1000,
+        max_steps=3000,
         learning_rate=0.0002,
         embedding_learning_rate=0.0001,
         fp16=not torch.cuda.is_bf16_supported(),
