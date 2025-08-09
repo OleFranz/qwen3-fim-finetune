@@ -49,7 +49,7 @@ os.remove(f"{script_path}qwen-code-fim-gguf/qwen-code-fim-gguf-f16.gguf")
 with open(f"{script_path}qwen-code-fim-gguf/Modelfile", "w") as f:
     f.write("""
 FROM ./qwen-code-fim-gguf-q4_k_m.gguf
-TEMPLATE {{- if .Suffix }}<|fim_prefix|>{{ .Prompt }}<|fim_suffix|>{{ .Suffix }}<|fim_middle|>{{ else }}{{ .Prompt }}{{ end }}
+TEMPLATE <|fim_prefix|>{{ if .Prompt }}{{ .Prompt }}{{ end }}<|fim_suffix|>{{ if .Suffix }}{{ .Suffix }}{{ end }}<|fim_middle|>
 """.strip())
 
 os.system("ollama rm qwen-code-fim-gguf")
